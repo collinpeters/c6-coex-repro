@@ -38,7 +38,7 @@ fi
 RUNLOG="$LOGDIR/run-$(date +%Y%m%d-%H%M%S).log"
 echo "Run log: $RUNLOG"
 
-PANIC=0; CLEAN=0; NOOUT=0; BUSY=0
+PANIC=0; CLEAN=0; HANG=0; NOOUT=0; BUSY=0
 CAP="$(mktemp)"
 trap 'rm -f "$CAP"' EXIT
 
@@ -60,14 +60,28 @@ for i in $(seq 1 "$ITERS"); do
   elif grep -q "COEX BRING-UP COMPLETE" "$CAP"; then
     CLEAN=$((CLEAN+1))
     echo "iter $i: clean"
-  elif grep -qiE "could not (open|connect)|probe.*(in use|busy)|Connection.*(Reset|refused)|No such device|Access denied|Stall|Arbitration|the requested resource is in use|failed to (open|attach)" "$CAP"; then
+  elif grep -qE '\[[0-9b]+\]' "$CAP"; then
+    # Reached a boot step but never completed or panicked within the window =
+    # a silent HANG (e.g. wifi::new / BleConnector::new never returns; the
+    # device's own 15s watchdog would eventually reset it). Report last step.
+    # Checked BEFORE the probe-busy branch: real firmware output (the [N]
+    # markers) is unambiguous and wins, even if a probe shutdown-warning
+    # (`Stall`/`ConnectionReset`) also appears in the same capture.
+    HANG=$((HANG+1))
+    LAST=$(grep -oE '\[[0-9b]+\]' "$CAP" | tail -1)
+    echo "iter $i: HANG — stalled after step $LAST (no completion, no panic)"
+  elif grep -qiE "could not (open|connect)|probe.*(in use|busy)|interface is busy|No such device|Access denied|Arbitration|the requested resource is in use|failed to (open|attach)|debug probe could not be created" "$CAP"; then
+    # No firmware output at all, AND a probe/USB error → another probe-rs has
+    # the JTAG interface (or it's wedged). Note: `Stall`/`ConnectionReset`
+    # alone were dropped from this pattern — they also occur in normal attach
+    # teardown, so they are NOT reliable busy indicators on their own.
     BUSY=$((BUSY+1))
-    echo "iter $i: PROBE BUSY — is another probe-rs attached? ($(grep -m1 -iE 'error|in use|busy|stall' "$CAP" | tr -d '\r' | head -c 70))"
+    echo "iter $i: PROBE BUSY — is another probe-rs attached? ($(grep -m1 -iE 'busy|could not|access denied|no such device' "$CAP" | tr -d '\r' | head -c 70))"
   else
     NOOUT=$((NOOUT+1))
-    echo "iter $i: no output (board produced no RTT in the capture window)"
+    echo "iter $i: no output (no RTT captured — board reset slow, or probe issue)"
   fi
 done
 
-echo "=== $ITERS iters | panics=$PANIC clean=$CLEAN probe-busy=$BUSY no-output=$NOOUT ==="
+echo "=== $ITERS iters | panics=$PANIC clean=$CLEAN hangs=$HANG probe-busy=$BUSY no-output=$NOOUT ==="
 echo "Full per-iteration capture: $RUNLOG"
