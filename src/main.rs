@@ -33,7 +33,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 // "logger format contains timestamp but no timestamp implementation".
 defmt::timestamp!("{=u64:us}", embassy_time::Instant::now().as_micros());
 
-// --- Which pre-radio step(s) to include before esp-radio bring-up (issue #485) ---
+// --- Which pre-radio step(s) to include before esp-radio bring-up ---
 // Bisect result (150 JTAG-reset boots each):
 //   bare (all false) ............ 0/150  clean
 //   flash read only ............. 0/150  clean
