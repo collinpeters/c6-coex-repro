@@ -1,0 +1,47 @@
+[package]
+name = "c6-coex-repro"
+version = "0.1.0"
+edition = "2021"
+# Minimal reproducer for an intermittent ESP32-C6 boot panic during
+# WiFi + ESP-NOW + BLE coexistence bring-up. See README.md.
+# Structure mirrors the upstream esp-rs `examples/esp-now/embassy_esp_now`.
+
+[[bin]]
+name = "c6-coex-repro"
+path = "src/main.rs"
+
+[dependencies]
+embassy-executor = "0.10.0"
+embassy-time = "0.5.0"
+critical-section = "1.2.0"
+bt-hci = "0.8.1"
+esp-alloc = "0.10.0"
+# defmt logging (matches the firmware that originally exhibited the bug; reliable
+# capture via `probe-rs attach --rtt-scan-memory`).
+defmt = "0.3"
+defmt-rtt = "1.0"
+esp-backtrace = { version = "0.19.0", features = ["panic-handler", "defmt"] }
+esp-bootloader-esp-idf = "0.5.0"
+esp-storage = "0.8"
+esp-hal = { version = "1.1.1", features = ["unstable"] }
+esp-rtos = { version = "0.3.0", features = ["esp-radio", "embassy"] }
+esp-radio = { version = "0.18.0", features = ["wifi", "esp-now", "ble", "coex", "unstable"] }
+
+[features]
+default = ["esp32c6"]
+esp32c6 = [
+    "esp-backtrace/esp32c6",
+    "esp-bootloader-esp-idf/esp32c6",
+    "esp-hal/esp32c6",
+    "esp-rtos/esp32c6",
+    "esp-radio/esp32c6",
+    "esp-storage/esp32c6",
+]
+
+[profile.release]
+opt-level = 3       # esp-radio requires opt-level >= 2
+debug = 2           # keep symbols for backtrace decoding
+lto = "thin"
+
+[profile.dev]
+opt-level = 2       # esp-radio requires opt-level >= 2 even in dev
