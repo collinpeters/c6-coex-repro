@@ -27,6 +27,12 @@ use esp_radio::wifi::{self, Config as WifiConfig};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
+// defmt timestamp: microseconds since boot, from the embassy-time clock that
+// esp-rtos installs. (Reads 0 for the very first lines before esp_rtos::start
+// brings the time driver up — harmless.) Silences the probe-rs warning:
+// "logger format contains timestamp but no timestamp implementation".
+defmt::timestamp!("{=u64:us}", embassy_time::Instant::now().as_micros());
+
 // --- Which pre-radio step(s) to include before esp-radio bring-up (issue #485) ---
 // Bisect result (150 JTAG-reset boots each):
 //   bare (all false) ............ 0/150  clean
