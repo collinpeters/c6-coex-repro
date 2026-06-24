@@ -3,8 +3,10 @@
 # Resets the board over JTAG and captures the boot via RTT, looping N times,
 # tallying boots that panic vs reach "COEX BRING-UP COMPLETE".
 #
-# Usage: ./reset-loop.sh [PROBE_SERIAL] [ITERS]
-#   PROBE_SERIAL e.g. 303a:1001:8C:FD:49:18:49:00 (from `probe-rs list`)
+# Usage: ./reset-loop.sh [PROBE_SERIAL] [ITERS] [CAP_SECS]
+#   PROBE_SERIAL  e.g. 303a:1001:8C:FD:49:18:49:00 (from `probe-rs list`)
+#   ITERS         number of reset/boot iterations (default 100)
+#   CAP_SECS      per-boot RTT capture window in seconds (default 2)
 #
 # All iterations are written to a single timestamped log under repro-logs/,
 # separated by a header line per iteration. The console shows one line per
@@ -15,6 +17,12 @@
 set -u
 PROBE="${1:-303a:1001:8C:FD:49:18:49:00}"
 ITERS="${2:-100}"
+# Per-boot RTT capture window (seconds). The firmware idles forever after
+# "COEX BRING-UP COMPLETE", so `probe-rs attach` never exits on its own and this
+# timeout bounds each iteration — it IS the per-iteration cost. The full boot
+# (init → COEX complete, and any panic) lands within ~0.4s, so 2s is ample and
+# keeps iterations short. Raise it only if your board boots slower.
+CAP_SECS="${3:-2}"
 CHIP="esp32c6"
 ELF="$(dirname "$0")/target/riscv32imac-unknown-none-elf/release/c6-coex-repro"
 LOGDIR="$(dirname "$0")/repro-logs"
@@ -36,7 +44,7 @@ trap 'rm -f "$CAP"' EXIT
 
 for i in $(seq 1 "$ITERS"); do
   probe-rs reset --chip "$CHIP" --probe "$PROBE" >/dev/null 2>&1
-  timeout 8 probe-rs attach --chip "$CHIP" --probe "$PROBE" --rtt-scan-memory \
+  timeout "$CAP_SECS" probe-rs attach --chip "$CHIP" --probe "$PROBE" --rtt-scan-memory \
     --log-format "{t} [{L}] {s} ({f}:{l})" "$ELF" >"$CAP" 2>&1
 
   # Append this iteration's capture to the single run log, with a separator.
